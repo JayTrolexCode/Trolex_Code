@@ -11,7 +11,6 @@ This project requires python 3.11
 
 ### Main features
 
-* Image Annotation Module
 
 * Training Module
 
