@@ -1,45 +1,28 @@
+import datetime
 from django.db import models
 from django.utils.html import mark_safe
 import os
+# Create your models here.
 
 
 def sample_path(instance, filename):
     return os.path.join("projects", instance.fabricName, "samples", filename)
 
-
 def image_path(instance, filename):
-    return os.path.join(
-        "projects",
-        instance.fabric.fabricName,
-        "datasets",
-        instance.dataset.datasetName,
-        instance.imageType,
-        "images",
-        filename,
-    )
+    if instance.category == "samples":
+        return os.path.join( instance.fabric.fabricName, "samples", filename)
+    else:    
+        return os.path.join( instance.fabric.fabricName, "datasets", instance.dataset.datasetName,instance.category, "images", filename)
 
 
-def label_path(instance, filename):
-    return os.path.join(
-        "projects",
-        instance.fabric.fabricName,
-        "datasets",
-        instance.dataset.datasetName,
-        instance.imageType,
-        "labels",
-        filename,
-    )
-
-
-# Create your models here.
 class Basemodel(models.Model):
     modelName = models.CharField(max_length=100, default="", blank=True)
     modelType = models.CharField(max_length=100, default="", blank=True)
+    timestamp = models.DateTimeField(default = datetime.datetime.now(),blank=True)
 
     def __str__(self):
         return self.modelName
-
-
+    
 class Fabric(models.Model):
     fabricName = models.CharField(max_length=100, default="", blank=True)
     fabricDescription = models.CharField(max_length=1000, default="", blank=True)
@@ -49,28 +32,53 @@ class Fabric(models.Model):
     material = models.CharField(max_length=100, default="", blank=True)
     sampleImages = models.ImageField(upload_to=sample_path, default="", blank=True)
     labels = models.JSONField(default=dict, blank=True)
+    timeStamp = models.DateTimeField(default = datetime.datetime.now(), blank=True)
 
     def __str__(self):
         return self.fabricName
 
-    def fabricPhoto(self):
-        return mark_safe(
-            f'<img src="/static{self.sampleImages.name.replace("projects","")}" width = "50"/>'
-        )
+    # def fabricPhoto(self):
+    #     return mark_safe(
+    #         f'<img src="/static{self.sampleImages.name.replace("projects","")}" width = "50"/>'
+    #     )
 
-
-class Dataset(models.Model):
-    fabric = models.ForeignKey(Fabric, on_delete=models.CASCADE)
+class Datasets(models.Model):
     datasetName = models.CharField(max_length=100, default="", blank=True)
-    tasks = models.JSONField(default=dict, blank=True)
+    datasetDescription = models.CharField(max_length=1000, default="", blank=True)
+    # sampleImages = models.ImageField(upload_to=sample_path, default="", blank=True)
+    fabric = models.ForeignKey(Fabric, on_delete=models.CASCADE)
+    cvatDeatials = models.JSONField(default=dict, blank=True)
+    noOfImages = models.IntegerField(default=0, blank=True)
+    modelCount = models.IntegerField(default=0, blank=True)
+    timeStamp = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.datasetName
+    
+  
+
+    
+class Images(models.Model):
+    category = models.CharField(max_length=100, default="", blank=True)
+    image = models.ImageField(upload_to=image_path, default="", blank=True)
+    role = models.CharField(max_length=100, default="not annotated", blank=True)
+    dataset  = models.ForeignKey(Datasets, on_delete=models.CASCADE,null = True,blank = True)
+    fabric = models.ForeignKey(Fabric, on_delete=models.CASCADE,null = True,blank = True) 
+    timeStamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.category
+
+    def datasetPhoto(self):
+        return mark_safe(
+            f'<img src="/static/{self.image.name.replace("projects/","")}" width = "50"/>'
+        )
+
 
 
 class YoloModel(models.Model):
     fabric = models.ForeignKey(Fabric, on_delete=models.CASCADE)
-    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
+    dataset = models.ForeignKey(Datasets, on_delete=models.CASCADE)
     baseModel = models.ForeignKey(Basemodel, on_delete=models.CASCADE)
     modelName = models.CharField(max_length=100, default="", blank=True)
     epochs = models.IntegerField(default=10)
@@ -78,6 +86,9 @@ class YoloModel(models.Model):
 
     def __str__(self):
         return self.modelName
+
+
+
 
 
 class Annotator(models.Model):
@@ -89,16 +100,14 @@ class Annotator(models.Model):
         return self.annotatorName
 
 
-class Imagegallery(models.Model):
+class Tasks(models.Model):
     fabric = models.ForeignKey(Fabric, on_delete=models.CASCADE)
-    dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE)
-    imageType = models.CharField(max_length=100, default="", blank=True)
-    image = models.ImageField(upload_to=image_path, default="", blank=True)
-    imageLabel = models.FileField(upload_to=label_path, default="", blank=True)
+    datasetName = models.ForeignKey(Datasets, on_delete=models.CASCADE)
+    tasks = models.JSONField(default=dict, blank=True)
 
-    # annotator = models.ForeignKey(Annotator, on_delete=models.CASCADE)
     def __str__(self):
-        return self.imageType
+        return self.datasetName
+
 
 
 class PredictionData(models.Model):
