@@ -14,7 +14,7 @@ import os
 from datetime import datetime
 import csv
 import psutil
-
+import shutil
 import threading
 from ultralytics import YOLO
 import torch
@@ -31,6 +31,8 @@ from threading import Thread
 import genicam.genapi as ge
 from pathlib import Path
 from harvesters.core import Harvester
+import yaml
+from tabulate import tabulate
 # Create your views here.
 width = int(4096)
 height = int(2176)
@@ -52,11 +54,14 @@ except:
     device = torch.device("cpu")
 
 
-
-with make_client(
-    host="app.cvat.ai", credentials=("basappa", "Tipl@123")
-) as client:
-    CVATClient = client
+try:
+    with make_client(
+        host="app.cvat.ai", credentials=("basappa", "Tipl@123")
+    ) as client:
+        CVATClient = client
+except:
+    CVATClient = None
+    print("CVAT Client Not connected")
 
 def createProject(name, labels):
     project_spec = {
@@ -94,6 +99,151 @@ def sysInfo(request):
     # Return the system information as a JSON object
     return HttpResponse(json.dumps(data), content_type="application/json")
 
+def datasetConvertor(dataset: str, output: str):
+    """
+    This function takes a dataset of format Datumaro 1.0 and converts it to YOLOv8 txt format that can be used to train the model.
+    The function takes the dataset path as input and returns the converted dataset path in the required format.
+    """
+    
+    # make a directory to store the converted dataset
+    os.makedirs(output, exist_ok=True)
+    os.makedirs(output+"/test", exist_ok=True)
+    os.makedirs(output+"/train", exist_ok=True)
+    os.makedirs(output+"/valid", exist_ok=True)
+    os.makedirs(output+"/test/images", exist_ok=True)
+    os.makedirs(output+"/train/images", exist_ok=True)
+    os.makedirs(output+"/valid/images", exist_ok=True)
+    os.makedirs(output+"/test/labels", exist_ok=True)
+    os.makedirs(output+"/train/labels", exist_ok=True)
+    os.makedirs(output+"/valid/labels", exist_ok=True)
+    
+    # check if the dataset exists
+    if not os.path.exists(dataset):
+        print("The dataset folder "+dataset+" does not exist")
+    # check if the annotations folder exists
+    if not os.path.exists(os.path.join(dataset, "annotations")):
+        print("The annotations folder is missing in the dataset folder")
+    # check if the images folder exists
+    if not os.path.exists(os.path.join(dataset, "images")):
+        print("The images folder is missing in the dataset folder")
+    
+    try:
+        # get the test.json file from the dataset/annotations folder
+        testPath = os.path.join(dataset, "annotations", "test.json")
+        testData = json.loads(open(testPath, "r").read())
+    except:
+        print("The test.json file is missing in the "+dataset+"/annotations folder")
+    try:
+        # get the train.json file from the dataset/annotations folder
+        trainPath = os.path.join(dataset, "annotations", "train.json")
+        trainData = json.loads(open(trainPath, "r").read())
+    except:
+        print("The train.json file is missing in the "+dataset+"/annotations folder")
+    try:
+        # get the val.json file from the dataset/annotations folder
+        valPath = os.path.join(dataset, "annotations", "val.json")
+        valData = json.loads(open(valPath, "r").read())
+    except:
+        print("The val.json file is missing in the "+dataset+"/annotations folder")
+    
+    # copy the images to the output folder
+    try:
+        testImages = os.listdir(os.path.join(dataset, "images", "test"))
+        for img in testImages:
+            shutil.copy(os.path.join(dataset, "images", "test", img), os.path.join(output, "test", "images", img))
+    except:
+        print("Error copying the test images to the "+output+" folder")
+    try:
+        trainImages = os.listdir(os.path.join(dataset, "images", "train"))
+        for img in trainImages:
+            shutil.copy(os.path.join(dataset, "images", "train", img), os.path.join(output, "train", "images", img))
+    except:
+        print("Error copying the train images to the "+output+" folder")
+    try:
+        valImages = os.listdir(os.path.join(dataset, "images", "val"))
+        for img in valImages:
+            shutil.copy(os.path.join(dataset, "images", "val", img), os.path.join(output, "valid", "images", img))
+    except:
+        print("Error copying the val images to the "+output+" folder")
+
+    # create the labels for the test images
+    try:
+        for image in testData["items"]:
+            fileName = image["id"]
+            tempPath = os.path.join(output, "test", "labels", fileName+".txt")
+            with open(tempPath, "w") as labelFile:
+                for annotation in image["annotations"]:
+                    points = ""
+                    count = 0
+                    for point in annotation["points"]:
+                        if count%2 == 0:
+                            point = point/image["image"]["size"][1]
+                        else:
+                            point = point/image["image"]["size"][0]
+                        points += str(point)+" "
+                        count += 1
+                    labelFile.write(str(annotation["label_id"])+" "+points+"\n")
+    except:
+        print("Error creating the labels for the test images")
+    # create the labels for the train images
+    try:
+        for image in trainData["items"]:
+            fileName = image["id"]
+            tempPath = os.path.join(output, "train", "labels", fileName+".txt")
+            with open(tempPath, "w") as labelFile:
+                for annotation in image["annotations"]:
+                    points = ""
+                    count = 0
+                    for point in annotation["points"]:
+                        if count%2 == 0:
+                            point = point/image["image"]["size"][1]
+                        else:
+                            point = point/image["image"]["size"][0]
+                        points += str(point)+" "
+                        count += 1
+                    labelFile.write(str(annotation["label_id"])+" "+points+"\n")
+    except:
+        print("Error creating the labels for the train images")
+    # create the labels for the val images
+    try:
+        for image in valData["items"]:
+            fileName = image["id"]
+            tempPath = os.path.join(output, "valid", "labels", fileName+".txt")
+            with open(tempPath, "w") as labelFile:
+                for annotation in image["annotations"]:
+                    points = ""
+                    count = 0
+                    for point in annotation["points"]:
+                        if count%2 == 0:
+                            point = point/image["image"]["size"][1]
+                        else:
+                            point = point/image["image"]["size"][0]
+                        points += str(point)+" "
+                        count += 1
+                    labelFile.write(str(annotation["label_id"])+" "+points+"\n")
+                
+    except:
+        print("Error creating the labels for the val images")
+
+    try:
+        # create data.yaml file
+        classes = [label["name"] for label in trainData["categories"]["label"]["labels"]]
+        currentPath = os.getcwd()
+        configData = {
+            "train": currentPath+"/"+output+"/train/images",
+            "val": currentPath+"/"+output+"/valid/images",
+            "test": currentPath+"/"+output+"/test/images",
+            "nc": len(classes),
+            "names": classes
+        }
+        yaml_data = yaml.dump(configData)
+        tempPath = os.path.join(output, "data.yaml")
+        with open(tempPath, 'w') as yaml_file:
+            yaml_file.write(yaml_data)
+    except:
+        print("Error creating the data.yaml file")
+    return dataset
+
 
 @csrf_exempt
 def modelTraining(request):
@@ -125,7 +275,7 @@ def modelTraining(request):
             # rect = request.POST.get(rect,False)
             # cos_lr = request.POST.get(cos_lr,False)
             # close_mosaic = request.POST.get(close_mosaic,10)
-            # resume = request.POST.get(resume,False)
+            resume = request.POST.get("resume",False)
             # amp = request.POST.get(amp,True)
             # fraction = request.POST.get(fraction,1.0)
             # profile = request.POST.get(profile,False)
@@ -151,13 +301,21 @@ def modelTraining(request):
             # plots = request.POST.get(plots,False)
             baseDir = os.getcwd()
             # Initialize a YOLO model with the specified base model
-            baemodel = YOLO("baseModels/" + model)
-            print(project,model,epochs,imgsz,name,datasetName)
+           
+            # print(project,model,epochs,imgsz,name,datasetName)
             # temp = baseDir+"/projects/"+project+"/datasets/"+ datasetName +"/data.yaml"
             # print(temp)
             # Train the model using the specified parameters
-            baemodel.train(
-                data=baseDir+"/projects/"+project+"/datasets/"+ datasetName +"/data.yaml",
+            if resume == "true":
+                resume = True
+                model = YOLO(
+                    "projects/" + project + "/models/" + name + "/weights/best.pt"
+                )
+                name = model
+            else:
+                baseModel = YOLO("baseModels/" + model)
+            baseModel.train(
+                data="projects/"+project+"/datasets/"+ datasetName +"/data.yaml",
                 # data=baseDir+"/projects/"+project+"/datasets/"+ datasetName+"/data.yaml",
                 epochs=int(epochs),
                 imgsz=int(imgsz),
@@ -165,7 +323,18 @@ def modelTraining(request):
                 name=name,
                 batch=-1,
                 task="segment",
+                resume = resume
             )
+            yolomodel = YoloModel()
+            yolomodel.fabric = Fabric.objects.filter(fabricName=project).first()
+            yolomodel.dataset = Datasets.objects.filter(fabric__fabricName = project,datasetName=datasetName).first()
+            yolomodel.baseModel = model
+            yolomodel.modelName = name
+            yolomodel.epochs = epochs
+            yolomodel.imgsz = imgsz
+            yolomodel.save()
+
+
             # Return a success message as a JSON object
             return HttpResponse(
                 json.dumps({"success": "Model Trained "}),
@@ -418,7 +587,7 @@ def getFebricDetails(request):
         fabricName = request.GET["fabricName"]
         imagesPath = []
         fabric = Fabric.objects.filter(fabricName=fabricName).first()
-        images = Images.objects.filter(fabric=fabric).all()
+        images = Images.objects.filter(fabric=fabric).all()[:10]
         for image in images:
             imagesPath.append(image.image.url[1:])
         return HttpResponse(
@@ -474,13 +643,15 @@ def imageGallery(request):
 def basemodelFecther(request):
     try:
         # Initialize an empty list to store the base model folders
-        project = request.GET.get("fabricName",None)
+        project = request.GET.get("project",None)
         data = {"baseModel": [], "projectModel": []}
         
         if project is not None:
             yoloModels = YoloModel.objects.filter(fabric__fabricName=project)
+            print("project:- ", project)
             for yoloModel in yoloModels:
                 data['projectModel'] .append(yoloModel.modelName)
+                
         basemodels = Basemodel.objects.all()
         for basemodel in basemodels:
             data['baseModel'] .append(basemodel.modelName)
@@ -792,7 +963,7 @@ def extractFolder(request):
                     extract_folder = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
                     temp_folder = "temp/" + projectName + "/"
                     target_folder = (
-                       "projects/" + projectName + "/datasets/" + datasetName + "/"
+                        "projects/" + projectName + "/datasets/" + datasetName + "/"
                     )
 
                     project = Fabric.objects.filter(fabricName=projectName).first()
@@ -800,6 +971,8 @@ def extractFolder(request):
                     with zipfile.ZipFile(dataset, "r") as zip_ref:
                         zip_ref.extractall(os.path.join(temp_folder, extract_folder))
                     print("Data Extracted 123")
+
+                    
                     # get the list of images in the test folder
                     dataset = dm.Dataset.import_from(
                         temp_folder + extract_folder + "/" ,"open_images"
@@ -905,76 +1078,67 @@ def extractFolder(request):
                 else:
                     # Create a folder name based on the current date and time
                     extract_folder = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
-                    temp_folder = "./temp/" + projectName + "/"
-                    target_folder = "./projects/" + projectName + "/datasets/"
+                    temp_folder = "temp/" + projectName + "/"
+                    target_folder = "projects/" + projectName + "/datasets/"
 
                     project = Fabric.objects.filter(fabricName=projectName).first()
                     # Extract the files from the zip file to the target folder
                     with zipfile.ZipFile(dataset, "r") as zip_ref:
                         zip_ref.extractall(os.path.join(temp_folder, extract_folder))
                     print("Data Extracted")
-                    # get the list of images in the test folder
-                    dataset = dm.Dataset.import_from(
-                        temp_folder + extract_folder + "/" ,"open_images"
-                    )
 
+                    datasetConvertor((temp_folder+extract_folder),(target_folder+extract_folder))
+                    # # get the list of images in the test folder
+                    # dataset = dm.Dataset.import_from(
+                    #     temp_folder + extract_folder + "/" ,"open_images"
+                    # )
+
+                    # # dataset.export(
+                    # #     temp_folder + extract_folder + "/yolo/",
+                    # #     "yolo_ultralytics",
+                    # #     save_media=True,
+                    # # )
                     # dataset.export(
                     #     temp_folder + extract_folder + "/yolo/",
                     #     "yolo_ultralytics",
                     #     save_media=True,
                     # )
-                    dataset.export(
-                        temp_folder + extract_folder + "/yolo/",
-                        "yolo_ultralytics",
-                        save_media=True,
-                    )
                     print("Data Converted")
-                    os.mkdir("./projects/"+projectName+"/datasets/"+extract_folder)
-                    os.mkdir("./projects/"+projectName+"/datasets/"+extract_folder+"/train/")
-                    os.mkdir("./projects/"+projectName+"/datasets/"+extract_folder+"/test/")
-                    os.mkdir("./projects/"+projectName+"/datasets/"+extract_folder+"/valid/")
-                    os.mkdir("./projects/"+projectName+"/datasets/"+extract_folder+"/train/images/")
-                    os.mkdir("./projects/"+projectName+"/datasets/"+extract_folder+"/test/images/")
-                    os.mkdir("./projects/"+projectName+"/datasets/"+extract_folder+"/valid/images/")
-                    os.mkdir("./projects/"+projectName+"/datasets/"+extract_folder+"/train/labels/")
-                    os.mkdir("./projects/"+projectName+"/datasets/"+extract_folder+"/test/labels/")
-                    os.mkdir("./projects/"+projectName+"/datasets/"+extract_folder+"/valid/labels/")
-                    print("Folder Created")
-                    target_folder = target_folder + extract_folder + "/"
-                    # copy all folders and files from the temp_folder + extract_folder + "/yolo/labels" to the target folder
-                    for file in os.listdir(temp_folder + extract_folder + "/yolo/images/test/"):
-                        with open( temp_folder + extract_folder + "/yolo/images/test/" + file, "rb",) as f:
-                            with open(target_folder + "test/images/" + file, "wb+") as target:
-                                        target.write(f.read())
-                    for file in os.listdir(temp_folder + extract_folder + "/yolo/images/train/"):
-                        with open(temp_folder + extract_folder + "/yolo/images/train/" + file,"rb",) as f:
-                            with open(target_folder + "train/images/" + file, "wb+") as target:
-                                target.write(f.read())
-                    for file in os.listdir(temp_folder + extract_folder + "/yolo/images/val/"):
-                            with open(temp_folder + extract_folder + "/yolo/images/val/" + file,"rb",) as f:
-                                with open(target_folder + "valid/images/" + file, "wb+") as target:
-                                    target.write(f.read())
-                    #Labels
-                    for file in os.listdir(temp_folder + extract_folder + "/yolo/labels/test/"):
-                        with open( temp_folder + extract_folder + "/yolo/labels/test/" + file, "rb",) as f:
-                            with open(target_folder + "test/labels/" + file, "wb+") as target:
-                                        target.write(f.read())
-                    for file in os.listdir(temp_folder + extract_folder + "/yolo/labels/train/"):
-                        with open(temp_folder + extract_folder + "/yolo/labels/train/" + file,"rb",) as f:
-                            with open(target_folder + "train/labels/" + file, "wb+") as target:
-                                target.write(f.read())
-                    for file in os.listdir(temp_folder + extract_folder + "/yolo/labels/val/"):
-                            with open(temp_folder + extract_folder + "/yolo/labels/val/" + file,"rb",) as f:
-                                with open(target_folder + "valid/labels/" + file, "wb+") as target:
-                                    target.write(f.read())
-                    baseDir = os.getcwd()
-                    with open(temp_folder + extract_folder + "/yolo/data.yaml","rb") as f:
-                        tempdata = f.read()
-                        print(tempdata)
-                        print(target_folder + "data.yaml")
-                        with open(target_folder + "data.yaml","wb") as target:
-                            target.write(tempdata)
-                            print("data.yaml created")
+                    
+                    # # copy all folders and files from the temp_folder + extract_folder + "/yolo/labels" to the target folder
+                    # for file in os.listdir(temp_folder + extract_folder + "/yolo/images/test/"):
+                    #     with open( temp_folder + extract_folder + "/yolo/images/test/" + file, "rb",) as f:
+                    #         with open(target_folder + "test/images/" + file, "wb+") as target:
+                    #                     target.write(f.read())
+                    # for file in os.listdir(temp_folder + extract_folder + "/yolo/images/train/"):
+                    #     with open(temp_folder + extract_folder + "/yolo/images/train/" + file,"rb",) as f:
+                    #         with open(target_folder + "train/images/" + file, "wb+") as target:
+                    #             target.write(f.read())
+                    # for file in os.listdir(temp_folder + extract_folder + "/yolo/images/val/"):
+                    #         with open(temp_folder + extract_folder + "/yolo/images/val/" + file,"rb",) as f:
+                    #             with open(target_folder + "valid/images/" + file, "wb+") as target:
+                    #                 target.write(f.read())
+                    # #Labels
+                    # for file in os.listdir(temp_folder + extract_folder + "/yolo/labels/test/"):
+                    #     with open( temp_folder + extract_folder + "/yolo/labels/test/" + file, "rb",) as f:
+                    #         with open(target_folder + "test/labels/" + file, "wb+") as target:
+                    #                     target.write(f.read())
+                    # for file in os.listdir(temp_folder + extract_folder + "/yolo/labels/train/"):
+                    #     with open(temp_folder + extract_folder + "/yolo/labels/train/" + file,"rb",) as f:
+                    #         with open(target_folder + "train/labels/" + file, "wb+") as target:
+                    #             target.write(f.read())
+                    # for file in os.listdir(temp_folder + extract_folder + "/yolo/labels/val/"):
+                    #         with open(temp_folder + extract_folder + "/yolo/labels/val/" + file,"rb",) as f:
+                    #             with open(target_folder + "valid/labels/" + file, "wb+") as target:
+                    #                 target.write(f.read())
+                    # baseDir = os.getcwd()
+                    # with open(temp_folder + extract_folder + "/yolo/data.yaml","rb") as f:
+                    #     tempdata = f.read()
+                    #     print(tempdata)
+                    #     print(target_folder + "data.yaml")
+                    #     with open(target_folder + "data.yaml","wb") as target:
+                    #         target.write(tempdata)
+                    #         print("data.yaml created")
 
                     print("Data Imported")
                     data = {}
@@ -1050,7 +1214,7 @@ def modelPrediction(request):
                 f.write(image.read())
             # image.save("projects/" + project + "/images/" + image.filename)
             # Check if the current model is different from the previous prediction model
-            if ("projects/" + project + "/models/" + modelName + "/weights/best.pt"!= predictPath):
+            if ("./projects/" + project + "/models/" + modelName + "/weights/best.pt"!= predictPath):
                 # If it is, update the prediction path, model, and folder
                 predictPath = (
                     "projects/" + project + "/models/" + modelName + "/weights/best.pt"
@@ -1065,7 +1229,7 @@ def modelPrediction(request):
                     "projects/" + project + "/images/" + image.name,
                     retina_masks=True,
                     iou=0.1,
-                    conf=0.3,
+                    conf=0.1,
                     imgsz=640,
                     project="projects/" + project + "/predicts/",
                     name=predictFolder,
@@ -1074,6 +1238,8 @@ def modelPrediction(request):
                     show_labels=False,
                     show_boxes=False,
                 )
+                names = predictModel.names
+                data = []
                 for result in results:
                     orignalPath = result.path
                     path = (
@@ -1116,6 +1282,28 @@ def modelPrediction(request):
                             2,
                             cv2.LINE_AA,
                         )
+                        
+                        xy = box.xyxy.tolist()[0]
+                        area_pixels = (xy[2] - xy[0]) * (xy[3] - xy[1])
+                        pixel_to_inch = 0.01  # Replace with your actual conversion factor
+                        area_inches = area_pixels * pixel_to_inch ** 2
+                        points = 0
+                        if area_inches > 0 and area_inches < 3:
+                            points = 1
+                        elif area_inches > 3 and area_inches < 6:
+                            points = 2
+                        elif area_inches > 6 and area_inches < 9:
+                            points = 3
+                        elif area_inches > 9:
+                            points = 4  
+                        temp = []
+                        temp.append(names[int(box.cls)])
+                        temp.append(centerX)
+                        temp.append(centerY)
+                        temp.append(area_inches)
+                        temp.append(points)
+                        data.append(temp)
+                        print(data)
                         newPredict = PredictionData()
                         newPredict.fabric = Fabric.objects.filter(
                             fabricName=project
@@ -1136,6 +1324,8 @@ def modelPrediction(request):
                         newPredict.imageAnnotated = path
                         newPredict.confidence = confident
                         newPredict.save()
+                    outputstr = tabulate(data, headers=["Name","centerX", "centerY","area_inches","points"],tablefmt='orgtbl')  
+                    print(outputstr) 
                     # save the image
                     cv2.imwrite(path, imageCv)
                 return HttpResponse(
@@ -1146,7 +1336,7 @@ def modelPrediction(request):
                             + predictFolder
                             + "/"
                             + image.name,
-                            "results": str(results),
+                            "results": outputstr.replace(' ',' ')
                         }
                     ),
                     content_type="application/json",
@@ -1182,12 +1372,7 @@ def webcam(cameraIndex, project, modelName):
         "contrast": 1.0,
     }
     # global outputfile 
-    global fielname 
-    fielname = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
-    fields = ['name', 'X', 'Y', 'area','point']
-    with open("projects/" + project + "/output/" + modelName + fielname + ".csv", 'w') as csvfile:
-        csvwriter = csv.DictWriter(csvfile, fieldnames = fields)
-        csvwriter.writeheader()
+    
         
     try:
         caps["Camera" + str(cameraIndex)] = cv2.VideoCapture(int(cameraIndex))
@@ -1198,6 +1383,11 @@ def webcam(cameraIndex, project, modelName):
             )
         except:
             pass
+    filename = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+    fields = ['name', 'X', 'Y', 'area','point']
+    with open("projects/" + project + "/output/" + modelName + filename + ".csv", 'w') as csvfile:
+        csvwriter = csv.DictWriter(csvfile, fieldnames = fields)
+        csvwriter.writeheader()
     while True:
         success, image = caps["Camera" + str(cameraIndex)].read()
         if success:
@@ -1283,9 +1473,9 @@ def webcam(cameraIndex, project, modelName):
                         temp.append(area_inches)
                         temp.append(points)
                         data.append(temp)
-            # fielname = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+            # filename = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
             # fields = ['name', 'X', 'Y', 'area','point']
-            with open("projects/" + project + "/output/" + modelName + fielname+ ".csv", 'a') as csvfile:
+            with open("projects/" + project + "/output/" + modelName + filename+ ".csv", 'a') as csvfile:
                 csvwriter = csv.writer(csvfile)
                 for row in data:
                     csvwriter.writerow(row)
@@ -1300,10 +1490,10 @@ def webcam(cameraIndex, project, modelName):
 
 def mainCam(cameraIndex, project, modelName):
     global predictPath, predictModel, predictFolder, caps, realtimePredict, h, cameraSetting
-    global fielname 
-    fielname = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+    global filename 
+    filename = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
     fields = ['name', 'X', 'Y', 'area','point']
-    with open("projects/" + project + "/output/" + modelName + fielname + ".csv", 'w') as csvfile:
+    with open("projects/" + project + "/output/" + modelName + filename + ".csv", 'w') as csvfile:
         csvwriter = csv.DictWriter(csvfile, fieldnames = fields)
         csvwriter.writeheader()
     index = 0
@@ -1333,7 +1523,11 @@ def mainCam(cameraIndex, project, modelName):
         8000.0
     )
     caps["Camera" + str(cameraIndex)].start()
-
+    filename = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+    fields = ['name', 'X', 'Y', 'area','point']
+    with open("projects/" + project + "/output/" + modelName + filename + ".csv", 'w') as csvfile:
+        csvwriter = csv.DictWriter(csvfile, fieldnames = fields)
+        csvwriter.writeheader()
     while True:
         with caps["Camera" + str(cameraIndex)].fetch() as buffer:
             component = buffer.payload.components[0]
@@ -1443,9 +1637,9 @@ def mainCam(cameraIndex, project, modelName):
                         temp.append(area_inches)
                         temp.append(points)
                         data.append(temp)
-            # fielname = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+            # filename = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
             # fields = ['name', 'X', 'Y', 'area','point']
-            with open("projects/" + project + "/output/" + modelName + fielname+ ".csv", 'a') as csvfile:
+            with open("projects/" + project + "/output/" + modelName + filename + ".csv", 'a') as csvfile:
                 csvwriter = csv.writer(csvfile)
                 for row in data:
                     csvwriter.writerow(row)
@@ -1668,8 +1862,5 @@ def CameraSetting(request):
 
 
 
-def addimagestemp(request):
-    #get list of files from folder "projects/Djangodemo/datasets/"
-    
-    #save the list to database
-    return HttpResponse(json.dumps({"status": "success"}), content_type="application/json")
+
+
