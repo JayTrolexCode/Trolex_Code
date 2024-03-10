@@ -25,7 +25,6 @@ urlpatterns = [
    path("toggleRealtimePrediction/",views.toggleRealtimePrediction,name="toggleRealtimePrediction"),
    path("cameraListFetcher/", views.cameraListFetcher, name="cameraListFetcher"),
    path("CameraSetting/", views.CameraSetting, name="CameraSetting"),
-   path("addimagestemp/",views.addimagestemp, name="addimagestemp"),
 
 
 
