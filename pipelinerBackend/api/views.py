@@ -130,19 +130,24 @@ def datasetConvertor(dataset: str, output: str):
     try:
         # get the test.json file from the dataset/annotations folder
         testPath = os.path.join(dataset, "annotations", "test.json")
-        testData = json.loads(open(testPath, "r").read())
+        with open(testPath, "r") as target:
+              testData = json.loads(target.read()) #target.write(f.read())
+        # testData = json.loads(open(testPath, "r").read())
     except:
         print("The test.json file is missing in the "+dataset+"/annotations folder")
     try:
         # get the train.json file from the dataset/annotations folder
         trainPath = os.path.join(dataset, "annotations", "train.json")
-        trainData = json.loads(open(trainPath, "r").read())
+        with open(trainPath, "r") as target:
+              trainData = json.loads(target.read())
     except:
         print("The train.json file is missing in the "+dataset+"/annotations folder")
     try:
         # get the val.json file from the dataset/annotations folder
         valPath = os.path.join(dataset, "annotations", "val.json")
-        valData = json.loads(open(valPath, "r").read())
+        with open(valPath, "r") as target:
+              valData = json.loads(target.read())
+        
     except:
         print("The val.json file is missing in the "+dataset+"/annotations folder")
     
